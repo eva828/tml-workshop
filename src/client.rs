@@ -9,7 +9,7 @@ use steam_vent_cdn::{
 };
 
 use crate::error::Error;
-use crate::tmod::{ManifestExt, TmodReader};
+use crate::tmod::{parse_tml_version, TmodReader, TmlVersion};
 use crate::{ItemId, ManifestId, VersionCache};
 
 const APP_ID: u32 = 1281930;
@@ -91,6 +91,38 @@ impl WorkshopClient {
         Ok(TmodReader::new(reader))
     }
 
+    pub async fn pick_latest_tmod(
+        &self,
+        manifest: &Manifest,
+    ) -> Result<Option<ManifestEntry>, Error> {
+        let tmod_files: Vec<&ManifestEntry> = manifest
+            .files
+            .iter()
+            .filter(|f| f.filename.ends_with(".tmod"))
+            .collect();
+
+        match tmod_files.len() {
+            0 => Ok(None),
+            1 => Ok(Some(tmod_files[0].clone())),
+            _ => {
+                let mut best: Option<(TmlVersion, ManifestEntry)> = None;
+                for entry in &tmod_files {
+                    let mut tmod = self.reader_for(entry)?;
+                    let header = tmod.parse_header().await?;
+                    let ver = parse_tml_version(&header.tml_version);
+                    match &best {
+                        None => best = Some((ver, (*entry).clone())),
+                        Some((current_ver, _)) if ver > *current_ver => {
+                            best = Some((ver, (*entry).clone()));
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(best.map(|(_, entry)| entry))
+            }
+        }
+    }
+
     pub async fn find_item_by_slug(&self, slug: &str) -> Result<ItemId, Error> {
         let raw = self.downloader.fetch_item_id_by_slug(APP_ID, slug).await?;
         Ok(ItemId::new(raw))
@@ -115,13 +147,13 @@ impl WorkshopClient {
                 .fetch_manifest_by_id(manifest_id.raw(), APP_ID)
                 .await?;
 
-            let tmod_entry = match manifest.pick_latest_tmod() {
+            let tmod_entry = match self.pick_latest_tmod(&manifest).await? {
                 Some(e) => e,
                 None => continue,
             };
 
             let progress = Arc::new(NoopProgress);
-            let reader = self.downloader.create_reader(tmod_entry, progress)?;
+            let reader = self.downloader.create_reader(&tmod_entry, progress)?;
             let mut tmod = TmodReader::new(reader);
             let header = tmod.parse_header().await?;
 

@@ -19,7 +19,7 @@ pub use cache::VersionCache;
 pub use client::WorkshopClient;
 pub use key::KeyParts;
 pub use localization::{CulturePrefix, LocalizationFile};
-pub use tmod::{FileEntry, ManifestExt, TmodHeader, TmodReader};
+pub use tmod::{FileEntry, TmodHeader, TmodReader};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]

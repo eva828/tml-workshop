@@ -1,5 +1,4 @@
 use crate::error::{Error, TmodError};
-use steam_vent_cdn::downloader::{Manifest, ManifestEntry};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
 
 const TMOD_MAGIC: &[u8; 4] = b"TMOD";
@@ -41,7 +40,7 @@ impl<R: tokio::io::AsyncRead + tokio::io::AsyncSeek + Unpin + Send> TmodReader<R
             return Err(TmodError::InvalidMagic.into());
         }
 
-        let _tml_version = read_string(&mut self.inner).await?;
+        let tml_version = read_string(&mut self.inner).await?;
 
         let mut hash = [0u8; 20];
         self.inner.read_exact(&mut hash).await?;
@@ -80,7 +79,7 @@ impl<R: tokio::io::AsyncRead + tokio::io::AsyncSeek + Unpin + Send> TmodReader<R
         }
 
         Ok(TmodHeader {
-            tml_version: _tml_version,
+            tml_version,
             mod_name,
             mod_version,
             hash,
@@ -162,46 +161,20 @@ async fn read_u32le<R: tokio::io::AsyncRead + Unpin>(reader: &mut R) -> Result<u
     Ok(u32::from_le_bytes(buf))
 }
 
-pub trait ManifestExt {
-    fn pick_latest_tmod(&self) -> Option<&ManifestEntry>;
-}
-
-impl ManifestExt for Manifest {
-    fn pick_latest_tmod(&self) -> Option<&ManifestEntry> {
-        let tmod_files: Vec<&ManifestEntry> = self
-            .files
-            .iter()
-            .filter(|f| f.filename.ends_with(".tmod"))
-            .collect();
-
-        match tmod_files.len() {
-            0 => None,
-            1 => Some(tmod_files[0]),
-            _ => tmod_files.into_iter().max_by(|a, b| {
-                let va = parse_tml_version_from_path(&a.filename);
-                let vb = parse_tml_version_from_path(&b.filename);
-                va.cmp(&vb)
-            }),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct TmlVersion {
+pub(crate) struct TmlVersion {
     year: u32,
     month: u32,
+    minor: u32,
+    patch: u32,
 }
 
-fn parse_tml_version_from_path(path: &str) -> TmlVersion {
-    let normalized = path.replace('\\', "/");
-    if let Some(parent) = std::path::Path::new(&normalized)
-        .parent()
-        .and_then(|p| p.file_name())
-        .and_then(|n| n.to_str())
-        && let Some((year_str, month_str)) = parent.split_once('.')
-        && let (Ok(year), Ok(month)) = (year_str.parse::<u32>(), month_str.parse::<u32>())
-    {
-        return TmlVersion { year, month };
+pub(crate) fn parse_tml_version(s: &str) -> TmlVersion {
+    let parts: Vec<u32> = s.split('.').filter_map(|p| p.parse().ok()).collect();
+    TmlVersion {
+        year: parts.first().copied().unwrap_or(0),
+        month: parts.get(1).copied().unwrap_or(0),
+        minor: parts.get(2).copied().unwrap_or(0),
+        patch: parts.get(3).copied().unwrap_or(0),
     }
-    TmlVersion { year: 0, month: 0 }
 }
