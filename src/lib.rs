@@ -18,7 +18,7 @@ pub use steam_vent_cdn::error::SteamVentError;
 pub use cache::VersionCache;
 pub use client::WorkshopClient;
 pub use key::KeyParts;
-pub use localization::{CulturePrefix, LocalizationFile};
+pub use localization::{CulturePrefix, LocalizationFile, KNOWN_CULTURES};
 pub use tmod::{FileEntry, TmodHeader, TmodReader};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

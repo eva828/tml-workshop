@@ -4,7 +4,7 @@ use hjson_edit::{HjsonDocument, RedNode, SyntaxKind};
 
 use crate::error::LocalizationError;
 
-const KNOWN_CULTURES: &[&str] = &[
+pub const KNOWN_CULTURES: &[&str] = &[
     "en-US", "de-DE", "it-IT", "fr-FR", "zh-Hans", "es-ES", "ru-RU", "pt-BR", "pl-PL",
 ];
 
@@ -16,6 +16,10 @@ pub struct CulturePrefix {
 
 impl CulturePrefix {
     pub fn parse(path: &str) -> Option<Self> {
+        Self::parse_with(path, KNOWN_CULTURES)
+    }
+
+    pub fn parse_with(path: &str, cultures: &[&str]) -> Option<Self> {
         use std::path::Path;
 
         let path = Path::new(path).with_extension("");
@@ -27,7 +31,7 @@ impl CulturePrefix {
         for path_part in path.split('/') {
             let segments: Vec<&str> = path_part.split('_').collect();
             for (i, segment) in segments.iter().enumerate() {
-                if KNOWN_CULTURES.contains(segment) {
+                if cultures.contains(segment) {
                     culture = Some(segment.to_string());
                     continue;
                 }
@@ -55,7 +59,15 @@ pub struct LocalizationFile {
 
 impl LocalizationFile {
     pub fn parse(path: &str, content: &str) -> Result<Self, LocalizationError> {
-        let culture_prefix = CulturePrefix::parse(path)
+        Self::parse_with(path, content, KNOWN_CULTURES)
+    }
+
+    pub fn parse_with(
+        path: &str,
+        content: &str,
+        cultures: &[&str],
+    ) -> Result<Self, LocalizationError> {
+        let culture_prefix = CulturePrefix::parse_with(path, cultures)
             .ok_or_else(|| LocalizationError::CultureNotFound(path.to_string()))?;
         let doc = HjsonDocument::parse(content)?;
         Ok(Self {
