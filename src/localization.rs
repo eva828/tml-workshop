@@ -16,25 +16,35 @@ pub struct CulturePrefix {
 
 impl CulturePrefix {
     pub fn parse(path: &str) -> Option<Self> {
-        let path = path.strip_suffix(".hjson").unwrap_or(path);
+        use std::path::Path;
+
+        let path = Path::new(path).with_extension("");
+        let path = path.to_string_lossy();
         let path = path.replace('\\', "/");
 
-        for part in path.split('/') {
-            for (i, segment) in part.split('_').enumerate() {
-                if KNOWN_CULTURES.contains(&segment) {
-                    let culture = segment.to_string();
-                    let remaining: Vec<&str> = part.split('_').skip(i + 1).collect();
-                    let prefix = if remaining.is_empty() {
-                        String::new()
-                    } else {
-                        remaining.join(".")
-                    };
-                    return Some(CulturePrefix { culture, prefix });
+        let mut culture: Option<String> = None;
+
+        for path_part in path.split('/') {
+            let segments: Vec<&str> = path_part.split('_').collect();
+            for (i, segment) in segments.iter().enumerate() {
+                if KNOWN_CULTURES.contains(segment) {
+                    culture = Some(segment.to_string());
+                    continue;
+                }
+                if culture.is_some() {
+                    let prefix = segments[i..].join("_");
+                    return Some(CulturePrefix {
+                        culture: culture.unwrap(),
+                        prefix,
+                    });
                 }
             }
         }
 
-        None
+        culture.map(|c| CulturePrefix {
+            culture: c,
+            prefix: String::new(),
+        })
     }
 }
 
