@@ -128,6 +128,31 @@ impl WorkshopClient {
         Ok(ItemId::new(raw))
     }
 
+    async fn resolve_mod_version(&self, manifest_id: ManifestId) -> Result<Option<String>, Error> {
+        if let Some(cached) = self.cache.get(manifest_id) {
+            return Ok(Some(cached));
+        }
+
+        let manifest = self
+            .downloader
+            .fetch_manifest_by_id(manifest_id.raw(), APP_ID)
+            .await?;
+
+        let tmod_entry = match self.pick_latest_tmod(&manifest).await? {
+            Some(e) => e,
+            None => return Ok(None),
+        };
+
+        let progress = Arc::new(NoopProgress);
+        let reader = self.downloader.create_reader(&tmod_entry, progress)?;
+        let mut tmod = TmodReader::new(reader);
+        let header = tmod.parse_header().await?;
+
+        let version = header.mod_version;
+        self.cache.insert(manifest_id, version.clone());
+        Ok(Some(version))
+    }
+
     pub async fn find_version(&self, item_id: ItemId, version: &str) -> Result<ManifestId, Error> {
         let mut stream = self.downloader.fetch_versions(item_id.raw(), None);
 
@@ -135,35 +160,33 @@ impl WorkshopClient {
             let version_info = version_info?;
             let manifest_id = ManifestId::new(version_info.manifest_id);
 
-            if let Some(cached_ver) = self.cache.get(manifest_id) {
-                if cached_ver == version {
+            if let Some(ver) = self.resolve_mod_version(manifest_id).await? {
+                if ver == version {
                     return Ok(manifest_id);
                 }
-                continue;
-            }
-
-            let manifest = self
-                .downloader
-                .fetch_manifest_by_id(manifest_id.raw(), APP_ID)
-                .await?;
-
-            let tmod_entry = match self.pick_latest_tmod(&manifest).await? {
-                Some(e) => e,
-                None => continue,
-            };
-
-            let progress = Arc::new(NoopProgress);
-            let reader = self.downloader.create_reader(&tmod_entry, progress)?;
-            let mut tmod = TmodReader::new(reader);
-            let header = tmod.parse_header().await?;
-
-            let peeked = header.mod_version;
-            self.cache.insert(manifest_id, peeked.clone());
-            if peeked == version {
-                return Ok(manifest_id);
             }
         }
 
         Err(SteamVentError::Workshop(WorkshopError::VersionNotFound(version.to_string())).into())
+    }
+
+    pub async fn list_versions(
+        &self,
+        item_id: ItemId,
+        limit: Option<u32>,
+    ) -> Result<Vec<String>, Error> {
+        let mut stream = self.downloader.fetch_versions(item_id.raw(), limit);
+        let mut versions = Vec::new();
+
+        while let Some(version_info) = stream.next().await {
+            let version_info = version_info?;
+            let manifest_id = ManifestId::new(version_info.manifest_id);
+
+            if let Some(ver) = self.resolve_mod_version(manifest_id).await? {
+                versions.push(ver);
+            }
+        }
+
+        Ok(versions)
     }
 }
