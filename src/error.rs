@@ -12,6 +12,8 @@ pub enum Error {
     Localization(#[from] LocalizationError),
     #[error("I/O error")]
     Io(#[from] std::io::Error),
+    #[error("Version parse error")]
+    Version(#[from] VersionError),
 }
 
 #[derive(Error, Debug)]
@@ -34,4 +36,10 @@ pub enum LocalizationError {
     CultureNotFound(String),
     #[error("HJSON parse error")]
     HjsonParse(#[from] hjson_edit::HjsonEditError),
+}
+
+#[derive(Error, Debug)]
+pub enum VersionError {
+    #[error("Must be 2 to 4 numbers separated by periods (got: {0:?})")]
+    Invalid(String),
 }

@@ -1,4 +1,4 @@
-use crate::error::{Error, TmodError};
+use crate::error::{Error, TmodError, VersionError};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, SeekFrom};
 
 const TMOD_MAGIC: &[u8; 4] = b"TMOD";
@@ -161,20 +161,64 @@ async fn read_u32le<R: tokio::io::AsyncRead + Unpin>(reader: &mut R) -> Result<u
     Ok(u32::from_le_bytes(buf))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct TmlVersion {
-    year: u32,
-    month: u32,
-    minor: u32,
-    patch: u32,
+#[derive(Debug, Clone, Copy)]
+pub enum Version {
+    Two(u32, u32),
+    Three(u32, u32, u32),
+    Four(u32, u32, u32, u32),
 }
 
-pub(crate) fn parse_tml_version(s: &str) -> TmlVersion {
-    let parts: Vec<u32> = s.split('.').filter_map(|p| p.parse().ok()).collect();
-    TmlVersion {
-        year: parts.first().copied().unwrap_or(0),
-        month: parts.get(1).copied().unwrap_or(0),
-        minor: parts.get(2).copied().unwrap_or(0),
-        patch: parts.get(3).copied().unwrap_or(0),
+impl Version {
+    pub fn parse(input: &str) -> Result<Self, VersionError> {
+        let parts: Vec<&str> = input.split('.').collect();
+        let nums: Vec<u32> = parts
+            .iter()
+            .map(|p| p.parse().map_err(|_| VersionError::Invalid(input.to_string())))
+            .collect::<Result<_, _>>()?;
+
+        match nums.as_slice() {
+            [a, b] => Ok(Version::Two(*a, *b)),
+            [a, b, c] => Ok(Version::Three(*a, *b, *c)),
+            [a, b, c, d] => Ok(Version::Four(*a, *b, *c, *d)),
+            _ => Err(VersionError::Invalid(input.to_string())),
+        }
+    }
+
+    fn parts(&self) -> [u32; 4] {
+        match *self {
+            Version::Two(a, b) => [a, b, 0, 0],
+            Version::Three(a, b, c) => [a, b, c, 0],
+            Version::Four(a, b, c, d) => [a, b, c, d],
+        }
+    }
+}
+
+impl PartialEq for Version {
+    fn eq(&self, other: &Self) -> bool {
+        self.parts() == other.parts()
+    }
+}
+
+impl Eq for Version {}
+
+impl PartialOrd for Version {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Version {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.parts().cmp(&other.parts())
+    }
+}
+
+impl std::fmt::Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            Version::Two(a, b) => write!(f, "{a}.{b}"),
+            Version::Three(a, b, c) => write!(f, "{a}.{b}.{c}"),
+            Version::Four(a, b, c, d) => write!(f, "{a}.{b}.{c}.{d}"),
+        }
     }
 }

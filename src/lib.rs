@@ -9,7 +9,7 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use serde::{Deserialize, Serialize};
 
-pub use error::{Error, LocalizationError, TmodError};
+pub use error::{Error, LocalizationError, TmodError, VersionError};
 pub use steam_vent_cdn::downloader::CdnRandomAccessReader;
 pub use steam_vent_cdn::downloader::{
     ChunkInfo, ItemDetails, Manifest, ManifestEntry, VersionInfo,
@@ -19,7 +19,7 @@ pub use cache::VersionCache;
 pub use client::WorkshopClient;
 pub use key::KeyParts;
 pub use localization::{CulturePrefix, LocalizationFile, KNOWN_CULTURES};
-pub use tmod::{FileEntry, TmodHeader, TmodReader};
+pub use tmod::{FileEntry, TmodHeader, TmodReader, Version};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
