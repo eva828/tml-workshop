@@ -2688,6 +2688,7 @@ dependencies = [
  "hjson-edit",
  "serde",
  "serde_json",
+ "sha1",
  "steam-vent-cdn",
  "thiserror 2.0.19",
  "tokio",
