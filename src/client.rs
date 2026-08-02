@@ -9,7 +9,7 @@ use steam_vent_cdn::{
 };
 
 use crate::error::Error;
-use crate::tmod::{parse_tml_version, TmodReader, TmlVersion};
+use crate::tmod::{TmodReader, Version};
 use crate::{ItemId, ManifestId, VersionCache};
 
 const APP_ID: u32 = 1281930;
@@ -69,19 +69,6 @@ impl WorkshopClient {
             .await?)
     }
 
-    pub async fn fetch_manifest_info(
-        &self,
-        item_id: ItemId,
-        manifest_id: ManifestId,
-    ) -> Result<Manifest, Error> {
-        let details = self.downloader.fetch_item_details(item_id.raw()).await?;
-        let app_id = details.consumer_appid.unwrap_or(APP_ID);
-        Ok(self
-            .downloader
-            .fetch_manifest_by_id(manifest_id.raw(), app_id)
-            .await?)
-    }
-
     pub fn reader_for(
         &self,
         entry: &ManifestEntry,
@@ -105,11 +92,11 @@ impl WorkshopClient {
             0 => Ok(None),
             1 => Ok(Some(tmod_files[0].clone())),
             _ => {
-                let mut best: Option<(TmlVersion, ManifestEntry)> = None;
+                let mut best: Option<(Version, ManifestEntry)> = None;
                 for entry in &tmod_files {
                     let mut tmod = self.reader_for(entry)?;
                     let header = tmod.parse_header().await?;
-                    let ver = parse_tml_version(&header.tml_version);
+                    let ver = Version::parse(&header.tml_version)?;
                     match &best {
                         None => best = Some((ver, (*entry).clone())),
                         Some((current_ver, _)) if ver > *current_ver => {
@@ -128,9 +115,9 @@ impl WorkshopClient {
         Ok(ItemId::new(raw))
     }
 
-    async fn resolve_mod_version(&self, manifest_id: ManifestId) -> Result<Option<String>, Error> {
+    async fn resolve_mod_version(&self, manifest_id: ManifestId) -> Result<Option<Version>, Error> {
         if let Some(cached) = self.cache.get(manifest_id) {
-            return Ok(Some(cached));
+            return Ok(Some(Version::parse(&cached)?));
         }
 
         let manifest = self
@@ -148,22 +135,22 @@ impl WorkshopClient {
         let mut tmod = TmodReader::new(reader);
         let header = tmod.parse_header().await?;
 
-        let version = header.mod_version;
-        self.cache.insert(manifest_id, version.clone());
+        let version = Version::parse(&header.mod_version)?;
+        self.cache.insert(manifest_id, header.mod_version);
         Ok(Some(version))
     }
 
-    pub async fn find_version(&self, item_id: ItemId, version: &str) -> Result<ManifestId, Error> {
+    pub async fn find_version(&self, item_id: ItemId, version: Version) -> Result<ManifestId, Error> {
         let mut stream = self.downloader.fetch_versions(item_id.raw(), None);
 
         while let Some(version_info) = stream.next().await {
             let version_info = version_info?;
             let manifest_id = ManifestId::new(version_info.manifest_id);
 
-            if let Some(ver) = self.resolve_mod_version(manifest_id).await? {
-                if ver == version {
-                    return Ok(manifest_id);
-                }
+            if let Some(ver) = self.resolve_mod_version(manifest_id).await?
+                && ver == version
+            {
+                return Ok(manifest_id);
             }
         }
 
@@ -174,7 +161,7 @@ impl WorkshopClient {
         &self,
         item_id: ItemId,
         limit: Option<u32>,
-    ) -> Result<Vec<String>, Error> {
+    ) -> Result<Vec<Version>, Error> {
         let mut stream = self.downloader.fetch_versions(item_id.raw(), limit);
         let mut versions = Vec::new();
 
