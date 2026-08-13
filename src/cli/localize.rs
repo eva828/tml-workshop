@@ -22,7 +22,9 @@ struct Localized {
 pub async fn run(args: LocalizeArgs) -> Result<(), CliError> {
     let client = WorkshopClient::connect().await?;
     let item_id = super::resolve_item(&client, &args.item).await?;
-    let manifest_id = client.fetch_latest_manifest_id(item_id).await?;
+    let manifest_id =
+        super::select_manifest_id(&client, item_id, args.version.as_deref(), args.manifest_id)
+            .await?;
     let manifest = client.fetch_manifest_by_id(manifest_id).await?;
     let entry = client
         .pick_latest_tmod(&manifest)

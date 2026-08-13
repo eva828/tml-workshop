@@ -4,7 +4,7 @@ use std::task::{Context, Poll};
 
 use indicatif::{ProgressBar, ProgressStyle};
 use tml_workshop::{
-    CdnRandomAccessReader, ItemId, ManifestId, TmodHeader, TmodReader, Version, WorkshopClient,
+    CdnRandomAccessReader, ItemId, ManifestId, TmodHeader, TmodReader, WorkshopClient,
 };
 use tokio::io::AsyncWrite;
 
@@ -15,7 +15,9 @@ pub async fn run(args: DownloadArgs) -> Result<(), CliError> {
     let client = WorkshopClient::connect().await?;
     let item_id = super::resolve_item(&client, &args.item).await?;
 
-    let manifest_id = select_manifest_id(&client, item_id, &args).await?;
+    let manifest_id =
+        super::select_manifest_id(&client, item_id, args.version.as_deref(), args.manifest_id)
+            .await?;
     let manifest = client.fetch_manifest_by_id(manifest_id).await?;
     let entry = client
         .pick_latest_tmod(&manifest)
@@ -62,24 +64,6 @@ pub async fn run(args: DownloadArgs) -> Result<(), CliError> {
     }
 
     Ok(())
-}
-
-async fn select_manifest_id(
-    client: &WorkshopClient,
-    item_id: ItemId,
-    args: &DownloadArgs,
-) -> Result<ManifestId, CliError> {
-    match (&args.version, args.manifest_id) {
-        (Some(version), None) => {
-            let version = Version::parse(version).map_err(tml_workshop::Error::from)?;
-            Ok(client.find_version(item_id, version).await?)
-        }
-        (None, Some(manifest_id)) => Ok(ManifestId::new(manifest_id)),
-        (None, None) => Ok(client.fetch_latest_manifest_id(item_id).await?),
-        (Some(_), Some(_)) => Err(CliError::msg(
-            "--version and --manifest-id are mutually exclusive",
-        )),
-    }
 }
 
 struct OutputContext {

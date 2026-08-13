@@ -8,7 +8,7 @@ pub use args::ItemSpec;
 
 use std::fmt;
 
-use tml_workshop::{Error, ItemId, WorkshopClient};
+use tml_workshop::{Error, ItemId, ManifestId, Version, WorkshopClient};
 
 #[derive(Debug)]
 pub enum CliError {
@@ -78,5 +78,24 @@ pub async fn resolve_item(client: &WorkshopClient, spec: &ItemSpec) -> Result<It
     match spec {
         ItemSpec::Id(id) => Ok(ItemId::new(*id)),
         ItemSpec::Slug(slug) => Ok(client.find_item_by_slug(slug).await?),
+    }
+}
+
+pub async fn select_manifest_id(
+    client: &WorkshopClient,
+    item_id: ItemId,
+    version: Option<&str>,
+    manifest_id: Option<u64>,
+) -> Result<ManifestId, CliError> {
+    match (version, manifest_id) {
+        (Some(version), None) => {
+            let version = Version::parse(version).map_err(Error::from)?;
+            Ok(client.find_version(item_id, version).await?)
+        }
+        (None, Some(manifest_id)) => Ok(ManifestId::new(manifest_id)),
+        (None, None) => Ok(client.fetch_latest_manifest_id(item_id).await?),
+        (Some(_), Some(_)) => Err(CliError::msg(
+            "--version and --manifest-id are mutually exclusive",
+        )),
     }
 }

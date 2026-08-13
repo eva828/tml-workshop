@@ -11,7 +11,7 @@
 | `info <ITEM>` | - | アイテム詳細と最新マニフェストIDを key:value 表示 | 既存のみ |
 | `versions <ITEM>` | `--limit N` | バージョン一覧のみ表示 | 既存 `list_versions` |
 | `download <ITEM>` | `--version V` \| `--manifest-id N`, `--output TMPL`, `--extract` | .tmodを保存し、任意で内容を展開 | 新規 `save_tmod` のみ |
-| `localize <ITEM>` | `--format hjson\|json\|csv\|table`, `--culture C` | Localization hjsonを抽出・フラット化して出力 | 既存のみ |
+| `localize <ITEM>` | `--version V` \| `--manifest-id N`, `--format hjson\|json\|csv\|table`, `--culture C` | Localization hjsonを抽出・フラット化して出力 | 既存のみ |
 
 ## 新規ライブラリAPI（1つのみ、既存APIは無変更）
 `WorkshopClient::save_tmod(entry: &ManifestEntry, dest: impl AsyncWrite + Unpin) -> Result<u64, Error>`

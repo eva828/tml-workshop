@@ -108,10 +108,23 @@ pub struct DownloadArgs {
 }
 
 #[derive(Args, Debug)]
+#[command(group(
+    ArgGroup::new("version_spec")
+        .args(["version", "manifest_id"])
+        .multiple(false)
+))]
 pub struct LocalizeArgs {
     /// Workshop item ID (numeric) or slug (non-numeric)
     #[arg(value_name = "ITEM")]
     pub item: ItemSpec,
+
+    /// Dump the localization for this mod version
+    #[arg(long, group = "version_spec", value_name = "VERSION")]
+    pub version: Option<String>,
+
+    /// Dump the localization for this manifest ID
+    #[arg(long, group = "version_spec", value_name = "MANIFEST_ID")]
+    pub manifest_id: Option<u64>,
 
     /// Output format
     #[arg(short, long, value_enum, default_value = "hjson")]
