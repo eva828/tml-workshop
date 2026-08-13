@@ -35,10 +35,10 @@ impl CulturePrefix {
                     culture = Some(segment.to_string());
                     continue;
                 }
-                if culture.is_some() {
+                if let Some(culture) = &culture {
                     let prefix = segments[i..].join("_");
                     return Some(CulturePrefix {
-                        culture: culture.unwrap(),
+                        culture: culture.clone(),
                         prefix,
                     });
                 }
@@ -87,6 +87,11 @@ impl LocalizationFile {
         collect_flat(root, &self.culture_prefix.prefix, &mut path, &mut result);
         Ok(result)
     }
+
+    /// ファイルのルート値を HjsonValue として返す（配列・数値なども構造を保持）。
+    pub fn document(&self) -> &HjsonDocument {
+        &self.doc
+    }
 }
 
 fn collect_flat(
@@ -107,7 +112,7 @@ fn collect_flat(
 
             for child in node.children() {
                 if child.kind() == SyntaxKind::Key {
-                    key = util::extract_string_from_node(&child);
+                    key = util::extract_key_from_node(&child);
                 } else if child.kind() != SyntaxKind::Comma {
                     value_node = Some(child);
                 }
@@ -197,5 +202,65 @@ pub(crate) mod util {
         };
 
         Some(quote_style.decode_body(text))
+    }
+
+    /// HJSON ではキーは常に文字列扱いのため、パーサがキーとして許容する
+    /// 数値・真偽値・null トークンもそのまま文字列として返す。
+    pub fn extract_key_from_node(node: &RedNode) -> Option<String> {
+        let token = node.first_token()?;
+        let text = token.text();
+
+        let quote_style = match token.kind() {
+            SyntaxKind::String => QuoteStyle::DoubleQuoted,
+            SyntaxKind::BlockString => QuoteStyle::Block,
+            SyntaxKind::UnquotedString => QuoteStyle::Unquoted,
+            SyntaxKind::Integer
+            | SyntaxKind::Float
+            | SyntaxKind::True
+            | SyntaxKind::False
+            | SyntaxKind::Null => return Some(text.to_string()),
+            _ => return None,
+        };
+
+        Some(quote_style.decode_body(text))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flatten_includes_numeric_keyed_members() {
+        let loc = LocalizationFile::parse_with(
+            "Localization/en-US_Mods.Example.hjson",
+            r#"{ Chat: { 0: "Oink!", 1: "Squeal..." } }"#,
+            KNOWN_CULTURES,
+        )
+        .unwrap();
+        let flat = loc.flatten().unwrap();
+        assert_eq!(
+            flat.get("Mods.Example.Chat.0").map(String::as_str),
+            Some("Oink!")
+        );
+        assert_eq!(
+            flat.get("Mods.Example.Chat.1").map(String::as_str),
+            Some("Squeal...")
+        );
+    }
+
+    #[test]
+    fn flatten_still_extracts_quoted_keys() {
+        let loc = LocalizationFile::parse_with(
+            "Localization/en-US_Mods.Example.hjson",
+            r#"{ "Quoted Key": "value" }"#,
+            KNOWN_CULTURES,
+        )
+        .unwrap();
+        let flat = loc.flatten().unwrap();
+        assert_eq!(
+            flat.get("Mods.Example.Quoted Key").map(String::as_str),
+            Some("value")
+        );
     }
 }

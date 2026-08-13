@@ -131,8 +131,8 @@ pub struct LocalizeArgs {
     pub format: OutputFormat,
 
     /// Only include entries for this culture (e.g. ja-JP)
-    #[arg(long)]
-    pub culture: Option<String>,
+    #[arg(long, default_value = "en-US")]
+    pub culture: String,
 }
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]

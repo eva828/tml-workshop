@@ -1,5 +1,6 @@
 use std::path::{Component, Path};
 
+use hjson_edit::{Format, HjsonDocument, HjsonDocumentMerge, HjsonObjectPath};
 use tabled::{builder::Builder, settings::Style};
 use tml_workshop::{CulturePrefix, LocalizationFile, WorkshopClient};
 
@@ -43,16 +44,14 @@ pub async fn run(args: LocalizeArgs) -> Result<(), CliError> {
 
     let mut files: Vec<Localized> = Vec::new();
     for entry in entries {
-        if let Some(culture) = &args.culture {
-            let prefix = CulturePrefix::parse_with(&entry.name, CLI_CULTURES).ok_or_else(|| {
-                CliError::msg(format!(
-                    "failed to detect culture for localization '{}'",
-                    entry.name
-                ))
-            })?;
-            if prefix.culture != *culture {
-                continue;
-            }
+        let prefix = CulturePrefix::parse_with(&entry.name, CLI_CULTURES).ok_or_else(|| {
+            CliError::msg(format!(
+                "failed to detect culture for localization '{}'",
+                entry.name
+            ))
+        })?;
+        if prefix.culture != args.culture {
+            continue;
         }
 
         let raw = tmod.extract_file_as_text(entry).await?;
@@ -70,14 +69,10 @@ pub async fn run(args: LocalizeArgs) -> Result<(), CliError> {
     }
 
     if files.is_empty() {
-        match &args.culture {
-            Some(culture) => {
-                return Err(CliError::msg(format!(
-                    "no localization file found for culture {culture}"
-                )));
-            }
-            None => return Err(CliError::msg("no localization files found in the mod")),
-        }
+        return Err(CliError::msg(format!(
+            "no localization file found for culture {}",
+            args.culture
+        )));
     }
 
     match args.format {
@@ -103,11 +98,36 @@ fn output_hjson(files: &[Localized]) -> Result<(), CliError> {
         return Ok(());
     }
 
+    let merged = merge_files(files)?;
+    print_merged(&merged)
+}
+
+fn merge_files(files: &[Localized]) -> Result<HjsonDocument, CliError> {
+    let merge_error =
+        |e: hjson_edit::HjsonEditError| CliError::msg(format!("failed to merge localization: {e}"));
+    let mut doc = HjsonDocument::parse("{}").map_err(merge_error)?;
     for file in files {
-        println!("# === {} ===", file.path);
-        print_raw(&file.raw);
+        let prefix = file.loc.culture_prefix().prefix.as_str();
+        let path = HjsonObjectPath::parse(prefix).map_err(merge_error)?;
+        doc = doc
+            .merge_from(&path, file.loc.document())
+            .map_err(merge_error)?;
     }
+    Ok(doc)
+}
+
+fn print_merged(merged: &HjsonDocument) -> Result<(), CliError> {
+    println!("{}", render_merged(merged)?);
     Ok(())
+}
+
+fn render_merged(merged: &HjsonDocument) -> Result<String, CliError> {
+    let render_error = |e: hjson_edit::HjsonEditError| {
+        CliError::msg(format!("failed to render merged hjson: {e}"))
+    };
+    let ast = merged.ast().map_err(render_error)?;
+    let formatted = ast.format(&hjson_edit::FormatConfig::default());
+    Ok(hjson_edit::RedNode::new_root(formatted).text().to_string())
 }
 
 fn output_json(files: &[Localized]) -> Result<(), CliError> {
@@ -191,5 +211,255 @@ fn print_raw(text: &str) {
     print!("{text}");
     if !text.ends_with('\n') {
         println!();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hjson_edit::{HjsonDocumentObjectEdit, HjsonValue};
+
+    fn localized(path: &str, content: &str) -> Localized {
+        let loc = LocalizationFile::parse_with(path, content, CLI_CULTURES).expect("parse");
+        Localized {
+            path: path.to_string(),
+            raw: content.to_string(),
+            loc,
+        }
+    }
+
+    fn value(doc: &HjsonDocument, dotted: &str) -> HjsonValue {
+        doc.get(HjsonObjectPath::parse(dotted).unwrap())
+            .expect("value")
+    }
+
+    #[test]
+    fn merge_distinct_prefixes_combine_subtrees() {
+        let files = vec![
+            localized(
+                "Localization/ja-JP_Mods.Alpha.hjson",
+                r#"{ Items: { Sword: { DisplayName: "剣" } } }"#,
+            ),
+            localized(
+                "Localization/ja-JP_Mods.Beta.hjson",
+                r#"{ Items: { Shield: { DisplayName: "盾" } } }"#,
+            ),
+        ];
+        let merged = merge_files(&files).expect("merge");
+        assert_eq!(
+            value(&merged, "Mods.Alpha.Items.Sword.DisplayName"),
+            HjsonValue::String("剣".to_string())
+        );
+        assert_eq!(
+            value(&merged, "Mods.Beta.Items.Shield.DisplayName"),
+            HjsonValue::String("盾".to_string())
+        );
+    }
+
+    #[test]
+    fn merge_prefixed_file_overrides_base() {
+        let files = vec![
+            localized(
+                "Localization/ja-JP.hjson",
+                r#"{ Header: { Author: "me" }, Mods: { ExternalLocalizer: { Configs: { DisplayName: "base" } } } }"#,
+            ),
+            localized(
+                "Localization/ja-JP_Mods.ExternalLocalizer.hjson",
+                r#"{ Configs: { DisplayName: "override" } }"#,
+            ),
+        ];
+        let merged = merge_files(&files).expect("merge");
+        assert_eq!(
+            value(&merged, "Header.Author"),
+            HjsonValue::String("me".to_string())
+        );
+        assert_eq!(
+            value(&merged, "Mods.ExternalLocalizer.Configs.DisplayName"),
+            HjsonValue::String("override".to_string())
+        );
+    }
+
+    #[test]
+    fn merge_duplicate_leaf_later_file_wins() {
+        let files = vec![
+            localized(
+                "Localization/ja-JP_Mods.Example.hjson",
+                r#"{ Items: { A: { DisplayName: "first" } } }"#,
+            ),
+            localized(
+                "Localization/ja-JP_Mods.Example.hjson",
+                r#"{ Items: { A: { DisplayName: "second" } } }"#,
+            ),
+        ];
+        let merged = merge_files(&files).expect("merge");
+        assert_eq!(
+            value(&merged, "Mods.Example.Items.A.DisplayName"),
+            HjsonValue::String("second".to_string())
+        );
+    }
+
+    #[test]
+    fn merge_object_entries_are_deep_merged() {
+        let files = vec![
+            localized(
+                "Localization/ja-JP_Mods.Example.hjson",
+                r#"{ Items: { A: { DisplayName: "a", Tooltip: "t" } } }"#,
+            ),
+            localized(
+                "Localization/ja-JP_Mods.Example.hjson",
+                r#"{ Items: { A: { DisplayName: "a2" } } }"#,
+            ),
+        ];
+        let merged = merge_files(&files).expect("merge");
+        assert_eq!(
+            value(&merged, "Mods.Example.Items.A.DisplayName"),
+            HjsonValue::String("a2".to_string())
+        );
+        assert_eq!(
+            value(&merged, "Mods.Example.Items.A.Tooltip"),
+            HjsonValue::String("t".to_string())
+        );
+    }
+
+    #[test]
+    fn merge_prefix_segment_colliding_with_scalar_is_error() {
+        let files = vec![
+            localized("Localization/ja-JP.hjson", r#"{ Mods: "not-an-object" }"#),
+            localized("Localization/ja-JP_Mods.Example.hjson", r#"{ Items: {} }"#),
+        ];
+        let err = merge_files(&files).expect_err("should fail");
+        assert!(
+            err.to_string().contains("'Mods' is not an object"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn merge_root_scalar_is_error() {
+        let files = vec![localized("Localization/ja-JP.hjson", "\"just a string\"")];
+        let err = merge_files(&files).expect_err("should fail");
+        assert!(
+            err.to_string().contains("source root is not an object"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn render_merged_outputs_valid_single_document() {
+        let files = vec![
+            localized(
+                "Localization/ja-JP.hjson",
+                r#"{ Header: { Author: "me" } }"#,
+            ),
+            localized(
+                "Localization/ja-JP_Mods.Example.hjson",
+                r#"{ Items: { Sword: { DisplayName: "剣" } } }"#,
+            ),
+        ];
+        let merged = merge_files(&files).expect("merge");
+        let rendered = render_merged(&merged).expect("render");
+
+        let doc = hjson_edit::HjsonDocument::parse(&rendered).expect("reparse");
+        let roundtripped = doc
+            .get(hjson_edit::HjsonObjectPath::parse("").unwrap())
+            .expect("get root");
+        let merged_root = merged
+            .get(hjson_edit::HjsonObjectPath::parse("").unwrap())
+            .expect("get root");
+        assert_eq!(roundtripped, merged_root);
+
+        assert!(
+            rendered.contains("\"me\""),
+            "values should be quoted:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("\"剣\""),
+            "values should be quoted:\n{rendered}"
+        );
+        assert!(
+            !rendered.contains("# === "),
+            "merged output must not contain file separators:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn merge_numeric_keyed_members_preserved() {
+        let files = vec![
+            localized(
+                "Localization/en-US.hjson",
+                r#"{ Mods: { Example: { Header: { Author: "me" } } } }"#,
+            ),
+            localized(
+                "Localization/en-US_Mods.Example.hjson",
+                r#"{ Chat: { 0: "Oink!", 1: "Squeal...", 2: "Snort!" } }"#,
+            ),
+        ];
+        let merged = merge_files(&files).expect("merge");
+        assert_eq!(
+            value(&merged, "Mods.Example.Header.Author"),
+            HjsonValue::String("me".to_string())
+        );
+        assert_eq!(
+            value(&merged, "Mods.Example.Chat.0"),
+            HjsonValue::String("Oink!".to_string())
+        );
+        assert_eq!(
+            value(&merged, "Mods.Example.Chat.1"),
+            HjsonValue::String("Squeal...".to_string())
+        );
+        assert_eq!(
+            value(&merged, "Mods.Example.Chat.2"),
+            HjsonValue::String("Snort!".to_string())
+        );
+    }
+
+    #[test]
+    fn render_merged_with_numeric_keys_roundtrips() {
+        let files = vec![
+            localized(
+                "Localization/en-US_Mods.Example.hjson",
+                r#"{ Chat: { 0: "Oink!", 1: "Squeal..." } }"#,
+            ),
+            localized("Localization/en-US_Mods.Other.hjson", r#"{ Title: "Hi" }"#),
+        ];
+        let merged = merge_files(&files).expect("merge");
+        let rendered = render_merged(&merged).expect("render");
+
+        let doc = hjson_edit::HjsonDocument::parse(&rendered).expect("reparse");
+        let roundtripped = doc
+            .get(hjson_edit::HjsonObjectPath::parse("").unwrap())
+            .expect("get root");
+        let merged_root = merged
+            .get(hjson_edit::HjsonObjectPath::parse("").unwrap())
+            .expect("get root");
+        assert_eq!(roundtripped, merged_root);
+        assert!(
+            rendered.contains("0: \"Oink!\""),
+            "numeric keys and quoted values should be preserved:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn merge_preserves_source_quote_styles() {
+        let files = vec![
+            localized(
+                "Localization/en-US.hjson",
+                r#"{ Header: { Author: "me" } }"#,
+            ),
+            localized(
+                "Localization/en-US_Mods.Example.hjson",
+                "{ Items: {\n  Sword: plain\n  Shield: \"quoted\"\n} }",
+            ),
+        ];
+        let merged = merge_files(&files).expect("merge");
+        let rendered = render_merged(&merged).expect("render");
+        assert!(
+            rendered.contains("Sword: plain"),
+            "unquoted value style lost:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("Shield: \"quoted\""),
+            "quoted value style lost:\n{rendered}"
+        );
     }
 }

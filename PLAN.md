@@ -11,7 +11,14 @@
 | `info <ITEM>` | - | アイテム詳細と最新マニフェストIDを key:value 表示 | 既存のみ |
 | `versions <ITEM>` | `--limit N` | バージョン一覧のみ表示 | 既存 `list_versions` |
 | `download <ITEM>` | `--version V` \| `--manifest-id N`, `--output TMPL`, `--extract` | .tmodを保存し、任意で内容を展開 | 新規 `save_tmod` のみ |
-| `localize <ITEM>` | `--version V` \| `--manifest-id N`, `--format hjson\|json\|csv\|table`, `--culture C` | Localization hjsonを抽出・フラット化して出力 | 既存のみ |
+| `localize <ITEM>` | `--version V` \| `--manifest-id N`, `--format hjson\|json\|csv\|table`, `--culture C` | Localization hjsonを抽出し、hjsonはプレフィクス補正して1つにマージして出力 | 既存のみ |
+
+## localize の hjson 出力仕様
+- `--culture` はデフォルト `en-US`。未指定時は en-US のファイルのみ対象（複数カルチャー混在はしない）。
+- 該当ファイルが1つの場合は原文をそのまま出力。複数の場合は `# === Localization/xxx ===` 区切りではなく、各ファイルを `CulturePrefix` のプレフィクスパス下にマージした1つの hjson として出力。
+- マージはノード単位で行い、**各ファイルの値のクォートスタイル（未クォート/ダブルクォート/ブロック文字列）を保持**する。インデント・空白はフォーマッタで整形（コメントは現状保持しない）。
+- マージ時のキー衝突は後勝ちで上書き（tModLoader の実行時マージに準拠）。オブジェクト同士は深くマージ。prefix セグメントがオブジェクトでない等の構造的衝突はエラー。
+- マージは hjson-edit の `HjsonDocument::merge_from`（`high_level/ops/merge.rs`）を利用。
 
 ## 新規ライブラリAPI（1つのみ、既存APIは無変更）
 `WorkshopClient::save_tmod(entry: &ManifestEntry, dest: impl AsyncWrite + Unpin) -> Result<u64, Error>`
