@@ -54,7 +54,7 @@ impl<R: tokio::io::AsyncRead + tokio::io::AsyncSeek + Unpin + Send> TmodReader<R
         let mod_version = read_string(&mut self.inner).await?;
 
         let entry_count = read_i32le(&mut self.inner).await?;
-        if !(0..=10_000).contains(&entry_count) {
+        if entry_count < 0 {
             return Err(TmodError::InvalidEntryCount(entry_count).into());
         }
 
