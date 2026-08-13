@@ -1,7 +1,9 @@
 use sha1::{Digest, Sha1};
 use std::time::Duration;
 use steam_vent_cdn::error::{SteamVentError, WorkshopError};
-use tml_workshop::{Error, ItemId, LocalizationFile, ManifestId, Version, VersionCache, WorkshopClient};
+use tml_workshop::{
+    Error, ItemId, LocalizationFile, ManifestId, TmodReader, Version, VersionCache, WorkshopClient,
+};
 
 const ITEM_ID: u64 = 2986383249;
 const MANIFEST_ID: u64 = 6272043491709940234;
@@ -338,4 +340,51 @@ async fn version_cache_save_load_roundtrip() {
 
     // 5. 一時ファイルを削除
     let _ = std::fs::remove_file(&cache_path);
+}
+
+/// save_tmod が .tmod 全体をストリーム保存し、保存ファイルがパース可能であることを検証
+#[tokio::test]
+async fn save_tmod_writes_valid_tmod_file() {
+    let manifest_id = ManifestId::new(MANIFEST_ID);
+    let cache_path = std::env::temp_dir().join(format!(
+        "tml-workshop-save-tmod-{}.tmod",
+        std::process::id()
+    ));
+    // 1. 接続
+    let client = WorkshopClient::connect().await.expect("connect");
+
+    // 2. 固定マニフェストを取得し、最新 .tmod を選定
+    let manifest = tokio::time::timeout(
+        Duration::from_secs(60),
+        client.fetch_manifest_by_id(manifest_id),
+    )
+    .await
+    .expect("fetch_manifest_by_id timed out")
+    .expect("fetch_manifest_by_id");
+    let entry = tokio::time::timeout(Duration::from_secs(60), client.pick_latest_tmod(&manifest))
+        .await
+        .expect("pick_latest_tmod timed out")
+        .expect("pick_latest_tmod")
+        .expect("no .tmod entry in manifest");
+
+    // 3. save_tmod で一時ファイルへ保存
+    let file = tokio::fs::File::create(&cache_path)
+        .await
+        .expect("create file");
+    let bytes = tokio::time::timeout(Duration::from_secs(300), client.save_tmod(&entry, file))
+        .await
+        .expect("save_tmod timed out")
+        .expect("save_tmod");
+
+    // 4. 書き込みバイト数がマニフェスト上のサイズと一致することを検証
+    assert_eq!(bytes, entry.size.expect("entry size"));
+
+    // 5. 保存ファイルを TmodReader でパースし、mod 名が一致することを検証
+    let opened = tokio::fs::File::open(&cache_path).await.expect("open file");
+    let mut tmod = TmodReader::new(opened);
+    let header = tmod.parse_header().await.expect("parse_header");
+    assert_eq!(header.mod_name, "ExternalLocalizer");
+
+    // 6. 一時ファイルを削除
+    let _ = tokio::fs::remove_file(&cache_path).await;
 }

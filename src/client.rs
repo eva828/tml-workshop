@@ -7,6 +7,7 @@ use steam_vent_cdn::{
     downloader::{CdnDownloader, CdnRandomAccessReader, Manifest, ManifestEntry, ProgressCallback},
     error::{SteamVentError, WorkshopError},
 };
+use tokio::io::AsyncWrite;
 
 use crate::error::Error;
 use crate::tmod::{TmodReader, Version};
@@ -76,6 +77,19 @@ impl WorkshopClient {
         let progress = Arc::new(NoopProgress);
         let reader = self.downloader.create_reader(entry, progress)?;
         Ok(TmodReader::new(reader))
+    }
+
+    /// Streams the full `.tmod` file (header + all entries) from the CDN
+    /// into `dest`, returning the total number of bytes written.
+    pub async fn save_tmod(
+        &self,
+        entry: &ManifestEntry,
+        dest: impl AsyncWrite + Unpin,
+    ) -> Result<u64, Error> {
+        let progress = Arc::new(NoopProgress);
+        let mut reader = self.downloader.create_reader(entry, progress)?;
+        let mut dest = dest;
+        Ok(tokio::io::copy(&mut reader, &mut dest).await?)
     }
 
     pub async fn pick_latest_tmod(
