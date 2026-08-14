@@ -173,7 +173,10 @@ impl Version {
         let parts: Vec<&str> = input.split('.').collect();
         let nums: Vec<u32> = parts
             .iter()
-            .map(|p| p.parse().map_err(|_| VersionError::Invalid(input.to_string())))
+            .map(|p| {
+                p.parse()
+                    .map_err(|_| VersionError::Invalid(input.to_string()))
+            })
             .collect::<Result<_, _>>()?;
 
         match nums.as_slice() {

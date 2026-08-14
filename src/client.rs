@@ -4,7 +4,9 @@ use futures::StreamExt;
 use steam_vent_cdn::{
     config::Config,
     connection::SteamClient,
-    downloader::{CdnCache, CdnDownloader, CdnRandomAccessReader, Manifest, ManifestEntry, ProgressCallback},
+    downloader::{
+        CdnCache, CdnDownloader, CdnRandomAccessReader, Manifest, ManifestEntry, ProgressCallback,
+    },
     error::{SteamVentError, WorkshopError},
 };
 use tokio::io::AsyncWrite;
@@ -158,7 +160,11 @@ impl WorkshopClient {
         Ok(Some(version))
     }
 
-    pub async fn find_version(&self, item_id: ItemId, version: Version) -> Result<ManifestId, Error> {
+    pub async fn find_version(
+        &self,
+        item_id: ItemId,
+        version: Version,
+    ) -> Result<ManifestId, Error> {
         let mut stream = self.downloader.fetch_versions(item_id.raw(), None);
 
         while let Some(version_info) = stream.next().await {

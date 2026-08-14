@@ -51,10 +51,13 @@ async fn fetch_manifest_by_id_returns_fixed_manifest() {
     let client = WorkshopClient::connect(None).await.expect("connect");
 
     // 2. 固定マニフェスト ID で Manifest を取得
-    let manifest = tokio::time::timeout(Duration::from_secs(60), client.fetch_manifest_by_id(manifest_id))
-        .await
-        .expect("fetch_manifest_by_id timed out")
-        .expect("fetch_manifest_by_id");
+    let manifest = tokio::time::timeout(
+        Duration::from_secs(60),
+        client.fetch_manifest_by_id(manifest_id),
+    )
+    .await
+    .expect("fetch_manifest_by_id timed out")
+    .expect("fetch_manifest_by_id");
 
     // 3. ファイル一覧（ソート済み）が実測値と完全一致することを検証
     let mut files: Vec<&str> = manifest.files.iter().map(|f| f.filename.as_str()).collect();
@@ -81,7 +84,11 @@ async fn pick_latest_tmod_and_parse_header() {
         ("icon.png", 5489, 5489),
         ("README.md", 4398, 1844),
         ("description_workshop.txt", 1940, 1001),
-        ("Localization/en-US_Mods.ExternalLocalizer.hjson", 6520, 2106),
+        (
+            "Localization/en-US_Mods.ExternalLocalizer.hjson",
+            6520,
+            2106,
+        ),
         ("changelog.txt", 139, 139),
         (
             "tools/BetaBranchUpdater/obj/Debug/net8.0/BetaBranchUpdater.GeneratedMSBuildEditorConfig.editorconfig",
@@ -96,17 +103,29 @@ async fn pick_latest_tmod_and_parse_header() {
             66,
             66,
         ),
-        ("Localization/ja-JP_Mods.ExternalLocalizer.hjson", 9173, 2661),
+        (
+            "Localization/ja-JP_Mods.ExternalLocalizer.hjson",
+            9173,
+            2661,
+        ),
         ("icon_workshop.rawimg", 1048588, 8149),
         ("lib/UtfUnknown.dll", 250880, 105928),
-        ("Assets/Fonts/WrathOfTheGods/DraedonText.xnb", 618236, 618236),
+        (
+            "Assets/Fonts/WrathOfTheGods/DraedonText.xnb",
+            618236,
+            618236,
+        ),
         ("Assets/Fonts/TerraTCG/SmallText.xnb", 1259956, 1259956),
         (
             "Assets/Fonts/WrathOfTheGods/SolynFightDialogue.xnb",
             1754648,
             1754648,
         ),
-        ("Assets/Fonts/WrathOfTheGods/SolynText.xnb", 11251078, 11251078),
+        (
+            "Assets/Fonts/WrathOfTheGods/SolynText.xnb",
+            11251078,
+            11251078,
+        ),
         (
             "Assets/Fonts/WrathOfTheGods/SolynTextItalics.xnb",
             12294266,
@@ -117,20 +136,20 @@ async fn pick_latest_tmod_and_parse_header() {
     let client = WorkshopClient::connect(None).await.expect("connect");
 
     // 2. 固定マニフェストを取得
-    let manifest = tokio::time::timeout(Duration::from_secs(60), client.fetch_manifest_by_id(manifest_id))
-        .await
-        .expect("fetch_manifest_by_id timed out")
-        .expect("fetch_manifest_by_id");
-
-    // 3. pick_latest_tmod が 2026.1/ExternalLocalizer.tmod を選ぶことを検証
-    let entry = tokio::time::timeout(
+    let manifest = tokio::time::timeout(
         Duration::from_secs(60),
-        client.pick_latest_tmod(&manifest),
+        client.fetch_manifest_by_id(manifest_id),
     )
     .await
-    .expect("pick_latest_tmod timed out")
-    .expect("pick_latest_tmod")
-    .expect("no .tmod entry in manifest");
+    .expect("fetch_manifest_by_id timed out")
+    .expect("fetch_manifest_by_id");
+
+    // 3. pick_latest_tmod が 2026.1/ExternalLocalizer.tmod を選ぶことを検証
+    let entry = tokio::time::timeout(Duration::from_secs(60), client.pick_latest_tmod(&manifest))
+        .await
+        .expect("pick_latest_tmod timed out")
+        .expect("pick_latest_tmod")
+        .expect("no .tmod entry in manifest");
     assert_eq!(entry.filename, expected_tmod_filename);
 
     // 4. reader_for → parse_header でヘッダを取得
@@ -190,19 +209,19 @@ async fn extract_localize_file_and_verify_content_hash() {
     let client = WorkshopClient::connect(None).await.expect("connect");
 
     // 2. 固定マニフェストを取得し、pick_latest_tmod で .tmod を選ぶ
-    let manifest = tokio::time::timeout(Duration::from_secs(60), client.fetch_manifest_by_id(manifest_id))
-        .await
-        .expect("fetch_manifest_by_id timed out")
-        .expect("fetch_manifest_by_id");
-
-    let entry = tokio::time::timeout(
+    let manifest = tokio::time::timeout(
         Duration::from_secs(60),
-        client.pick_latest_tmod(&manifest),
+        client.fetch_manifest_by_id(manifest_id),
     )
     .await
-    .expect("pick_latest_tmod timed out")
-    .expect("pick_latest_tmod")
-    .expect("no .tmod entry in manifest");
+    .expect("fetch_manifest_by_id timed out")
+    .expect("fetch_manifest_by_id");
+
+    let entry = tokio::time::timeout(Duration::from_secs(60), client.pick_latest_tmod(&manifest))
+        .await
+        .expect("pick_latest_tmod timed out")
+        .expect("pick_latest_tmod")
+        .expect("no .tmod entry in manifest");
 
     // 3. parse_header でエントリ一覧を取得
     let mut tmod = client.reader_for(&entry).expect("reader_for");
@@ -234,8 +253,8 @@ async fn extract_localize_file_and_verify_content_hash() {
         .await
         .expect("extract_file_as_text");
 
-    let loc = LocalizationFile::parse(&localize_entry.name, &text)
-        .expect("LocalizationFile::parse");
+    let loc =
+        LocalizationFile::parse(&localize_entry.name, &text).expect("LocalizationFile::parse");
     // 7. culture・prefix が実測値と一致することを検証
     assert_eq!(loc.culture_prefix().culture, expected_culture);
     assert_eq!(loc.culture_prefix().prefix, expected_prefix);
@@ -246,7 +265,10 @@ async fn extract_localize_file_and_verify_content_hash() {
     for key in expected_keys {
         assert!(flat.contains_key(key), "missing key: {key}");
     }
-    assert_eq!(flat.get(expected_value.0), Some(&expected_value.1.to_string()));
+    assert_eq!(
+        flat.get(expected_value.0),
+        Some(&expected_value.1.to_string())
+    );
 }
 
 /// list_versions が tmod ヘッダから解決したバージョンのリストを、新しい順（意味的降順）で返すことを検証
@@ -258,10 +280,13 @@ async fn list_versions_returns_resolved_versions() {
     let client = WorkshopClient::connect(None).await.expect("connect");
 
     // 2. list_versions(Some(3)) で最新 3 件のバージョンを取得
-    let versions = tokio::time::timeout(Duration::from_secs(120), client.list_versions(item_id, Some(3)))
-        .await
-        .expect("list_versions timed out")
-        .expect("list_versions");
+    let versions = tokio::time::timeout(
+        Duration::from_secs(120),
+        client.list_versions(item_id, Some(3)),
+    )
+    .await
+    .expect("list_versions timed out")
+    .expect("list_versions");
 
     // 3. リストが非空であることを検証
     assert!(!versions.is_empty());
@@ -315,10 +340,8 @@ async fn version_cache_save_load_roundtrip() {
     let item_id = ItemId::new(ITEM_ID);
     let expected_version = Version::parse("0.1.14.11").expect("Version::parse known version");
     let expected_manifest_id = ManifestId::new(MANIFEST_ID);
-    let cache_path = std::env::temp_dir().join(format!(
-        "tml-workshop-cache-{}.json",
-        std::process::id()
-    ));
+    let cache_path =
+        std::env::temp_dir().join(format!("tml-workshop-cache-{}.json", std::process::id()));
     // 1. 接続
     let client = WorkshopClient::connect(None).await.expect("connect");
 
@@ -336,7 +359,10 @@ async fn version_cache_save_load_roundtrip() {
 
     // 4. load で復元し、get が固定バージョン文字列と一致することを検証
     let loaded = VersionCache::load(&cache_path).expect("cache load");
-    assert_eq!(loaded.get(expected_manifest_id), Some(expected_version.to_string()));
+    assert_eq!(
+        loaded.get(expected_manifest_id),
+        Some(expected_version.to_string())
+    );
 
     // 5. 一時ファイルを削除
     let _ = std::fs::remove_file(&cache_path);
