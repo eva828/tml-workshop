@@ -4,15 +4,15 @@ use std::task::{Context, Poll};
 
 use indicatif::{ProgressBar, ProgressStyle};
 use tml_workshop::{
-    CdnRandomAccessReader, ItemId, ManifestId, TmodHeader, TmodReader, WorkshopClient,
+    CdnCache, CdnRandomAccessReader, ItemId, ManifestId, TmodHeader, TmodReader, WorkshopClient,
 };
 use tokio::io::AsyncWrite;
 
 use super::CliError;
 use super::args::DownloadArgs;
 
-pub async fn run(args: DownloadArgs) -> Result<(), CliError> {
-    let client = WorkshopClient::connect().await?;
+pub async fn run(args: DownloadArgs, cache: Option<CdnCache>) -> Result<(), CliError> {
+    let client = WorkshopClient::connect(cache).await?;
     let item_id = super::resolve_item(&client, &args.item).await?;
 
     let manifest_id =

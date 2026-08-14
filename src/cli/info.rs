@@ -1,12 +1,12 @@
 use std::fmt::Display;
 
-use tml_workshop::WorkshopClient;
+use tml_workshop::{CdnCache, WorkshopClient};
 
 use super::CliError;
 use super::args::InfoArgs;
 
-pub async fn run(args: InfoArgs) -> Result<(), CliError> {
-    let client = WorkshopClient::connect().await?;
+pub async fn run(args: InfoArgs, cache: Option<CdnCache>) -> Result<(), CliError> {
+    let client = WorkshopClient::connect(cache).await?;
     let item_id = super::resolve_item(&client, &args.item).await?;
     let details = client.fetch_item_details(item_id).await?;
     let latest = client.fetch_latest_manifest_id(item_id).await?;

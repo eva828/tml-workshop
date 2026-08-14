@@ -4,7 +4,7 @@ use futures::StreamExt;
 use steam_vent_cdn::{
     config::Config,
     connection::SteamClient,
-    downloader::{CdnDownloader, CdnRandomAccessReader, Manifest, ManifestEntry, ProgressCallback},
+    downloader::{CdnCache, CdnDownloader, CdnRandomAccessReader, Manifest, ManifestEntry, ProgressCallback},
     error::{SteamVentError, WorkshopError},
 };
 use tokio::io::AsyncWrite;
@@ -29,8 +29,12 @@ pub struct WorkshopClient {
 }
 
 impl WorkshopClient {
-    pub async fn connect() -> Result<Self, Error> {
-        let config = Config::builder().app_id(APP_ID).build();
+    pub async fn connect(cache: Option<CdnCache>) -> Result<Self, Error> {
+        let mut builder = Config::builder().app_id(APP_ID);
+        if let Some(cache) = cache {
+            builder = builder.cache(cache);
+        }
+        let config = builder.build();
         let client = SteamClient::new(config);
         let session = client.connect().await?;
         let downloader = CdnDownloader::connect(session).await?;

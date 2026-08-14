@@ -2,7 +2,7 @@ use std::path::{Component, Path};
 
 use hjson_edit::{Format, HjsonDocument, HjsonDocumentMerge, HjsonObjectPath};
 use tabled::{builder::Builder, settings::Style};
-use tml_workshop::{CulturePrefix, LocalizationFile, WorkshopClient};
+use tml_workshop::{CdnCache, CulturePrefix, LocalizationFile, WorkshopClient};
 
 use super::CliError;
 use super::args::{LocalizeArgs, OutputFormat};
@@ -20,8 +20,8 @@ struct Localized {
     loc: LocalizationFile,
 }
 
-pub async fn run(args: LocalizeArgs) -> Result<(), CliError> {
-    let client = WorkshopClient::connect().await?;
+pub async fn run(args: LocalizeArgs, cache: Option<CdnCache>) -> Result<(), CliError> {
+    let client = WorkshopClient::connect(cache).await?;
     let item_id = super::resolve_item(&client, &args.item).await?;
     let manifest_id =
         super::select_manifest_id(&client, item_id, args.version.as_deref(), args.manifest_id)

@@ -15,7 +15,7 @@ async fn fetch_item_details_and_latest_manifest_id() {
     let item_id = ItemId::new(ITEM_ID);
     let expected_title = "External Localizer";
     // 1. 接続
-    let client = WorkshopClient::connect().await.expect("connect");
+    let client = WorkshopClient::connect(None).await.expect("connect");
 
     // 2. fetch_item_details でアイテム詳細を取得、ID が 2986383249 と一致することを検証
     let details = tokio::time::timeout(Duration::from_secs(60), client.fetch_item_details(item_id))
@@ -48,7 +48,7 @@ async fn fetch_manifest_by_id_returns_fixed_manifest() {
         "workshop.json",
     ];
     // 1. 接続
-    let client = WorkshopClient::connect().await.expect("connect");
+    let client = WorkshopClient::connect(None).await.expect("connect");
 
     // 2. 固定マニフェスト ID で Manifest を取得
     let manifest = tokio::time::timeout(Duration::from_secs(60), client.fetch_manifest_by_id(manifest_id))
@@ -114,7 +114,7 @@ async fn pick_latest_tmod_and_parse_header() {
         ),
     ];
     // 1. 接続
-    let client = WorkshopClient::connect().await.expect("connect");
+    let client = WorkshopClient::connect(None).await.expect("connect");
 
     // 2. 固定マニフェストを取得
     let manifest = tokio::time::timeout(Duration::from_secs(60), client.fetch_manifest_by_id(manifest_id))
@@ -187,7 +187,7 @@ async fn extract_localize_file_and_verify_content_hash() {
         "All",
     );
     // 1. 接続
-    let client = WorkshopClient::connect().await.expect("connect");
+    let client = WorkshopClient::connect(None).await.expect("connect");
 
     // 2. 固定マニフェストを取得し、pick_latest_tmod で .tmod を選ぶ
     let manifest = tokio::time::timeout(Duration::from_secs(60), client.fetch_manifest_by_id(manifest_id))
@@ -255,7 +255,7 @@ async fn extract_localize_file_and_verify_content_hash() {
 async fn list_versions_returns_resolved_versions() {
     let item_id = ItemId::new(ITEM_ID);
     // 1. 接続
-    let client = WorkshopClient::connect().await.expect("connect");
+    let client = WorkshopClient::connect(None).await.expect("connect");
 
     // 2. list_versions(Some(3)) で最新 3 件のバージョンを取得
     let versions = tokio::time::timeout(Duration::from_secs(120), client.list_versions(item_id, Some(3)))
@@ -280,7 +280,7 @@ async fn find_version_matches_and_reports_missing() {
     let missing_version = Version::parse("0.0.0").expect("Version::parse missing version");
     let expected_manifest_id = ManifestId::new(MANIFEST_ID);
     // 1. 接続
-    let client = WorkshopClient::connect().await.expect("connect");
+    let client = WorkshopClient::connect(None).await.expect("connect");
 
     // 2. find_version("0.1.14.11") が固定マニフェスト ID と一致することを検証
     let found = tokio::time::timeout(
@@ -320,7 +320,7 @@ async fn version_cache_save_load_roundtrip() {
         std::process::id()
     ));
     // 1. 接続
-    let client = WorkshopClient::connect().await.expect("connect");
+    let client = WorkshopClient::connect(None).await.expect("connect");
 
     // 2. find_version でバージョンを解決し、キャッシュに mid → バージョンが入ることを準備
     tokio::time::timeout(
@@ -351,7 +351,7 @@ async fn save_tmod_writes_valid_tmod_file() {
         std::process::id()
     ));
     // 1. 接続
-    let client = WorkshopClient::connect().await.expect("connect");
+    let client = WorkshopClient::connect(None).await.expect("connect");
 
     // 2. 固定マニフェストを取得し、最新 .tmod を選定
     let manifest = tokio::time::timeout(

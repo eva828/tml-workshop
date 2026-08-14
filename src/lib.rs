@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 pub use error::{Error, LocalizationError, TmodError, VersionError};
 pub use steam_vent_cdn::downloader::CdnRandomAccessReader;
 pub use steam_vent_cdn::downloader::{
-    ChunkInfo, ItemDetails, Manifest, ManifestEntry, VersionInfo,
+    CdnCache, ChunkInfo, ItemDetails, Manifest, ManifestEntry, VersionInfo,
 };
 pub use steam_vent_cdn::error::SteamVentError;
 pub use cache::VersionCache;

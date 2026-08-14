@@ -14,6 +14,9 @@ pub struct Cli {
     #[arg(short, long, global = true, help = "Enable verbose logging to stderr")]
     pub verbose: bool,
 
+    #[arg(long, global = true, help = "Disable the global cache")]
+    pub no_cache: bool,
+
     #[command(subcommand)]
     pub command: Command,
 }
