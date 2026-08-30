@@ -4,7 +4,7 @@ pub use steam_vent_cdn::error::SteamVentError;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("CDN / Steam API error")]
+    #[error("CDN / Steam API error: {0}")]
     Cdn(#[from] SteamVentError),
     #[error(".tmod file error")]
     Tmod(#[from] TmodError),
@@ -14,6 +14,24 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error("Version parse error")]
     Version(#[from] VersionError),
+}
+
+impl Error {
+    /// 対象のWorkshopアイテムが公開されていない（非公開・削除等）ために失敗したかを返す。
+    ///
+    /// この場合、翻訳ファイル（hjson）の更新は可能だがバージョン等の情報は取得できない。
+    pub fn is_workshop_item_unavailable(&self) -> bool {
+        match self {
+            Error::Cdn(SteamVentError::Workshop(e)) => matches!(
+                e,
+                steam_vent_cdn::error::WorkshopError::ItemNotFoundBySlug(_)
+                    | steam_vent_cdn::error::WorkshopError::GetDetailsFailed { .. }
+                    | steam_vent_cdn::error::WorkshopError::ItemDetailsMissing(_)
+                    | steam_vent_cdn::error::WorkshopError::NotAWorkshopItem
+            ),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Error, Debug)]
