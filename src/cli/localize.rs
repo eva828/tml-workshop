@@ -217,7 +217,7 @@ fn print_raw(text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hjson_edit::{HjsonDocumentObjectEdit, HjsonValue};
+    use hjson_edit::{HjsonDocumentEdit, HjsonValue};
 
     fn localized(path: &str, content: &str) -> Localized {
         let loc = LocalizationFile::parse_with(path, content, CLI_CULTURES).expect("parse");
@@ -329,7 +329,8 @@ mod tests {
         ];
         let err = merge_files(&files).expect_err("should fail");
         assert!(
-            err.to_string().contains("'Mods' is not an object"),
+            err.to_string()
+                .contains("Mods.Example is not inside an object"),
             "unexpected error: {err}"
         );
     }

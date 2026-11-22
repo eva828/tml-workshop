@@ -187,42 +187,53 @@ fn build_key(prefix: &str, path: &[String]) -> String {
 }
 
 pub(crate) mod util {
-    use hjson_edit::ast::QuoteStyle;
-    use hjson_edit::{RedNode, SyntaxKind};
+    use hjson_edit::ast::{QuoteStyle, token_column};
+    use hjson_edit::{RedNode, RedToken, SyntaxKind};
 
     pub fn extract_string_from_node(node: &RedNode) -> Option<String> {
-        let token = node.first_token()?;
-        let text = token.text();
-
-        let quote_style = match token.kind() {
-            SyntaxKind::String => QuoteStyle::DoubleQuoted,
-            SyntaxKind::BlockString => QuoteStyle::Block,
-            SyntaxKind::UnquotedString => QuoteStyle::Unquoted,
-            _ => return None,
-        };
-
-        Some(quote_style.decode_body(text))
+        decode_token(&node.first_token()?)
     }
 
     /// HJSON ではキーは常に文字列扱いのため、パーサがキーとして許容する
     /// 数値・真偽値・null トークンもそのまま文字列として返す。
     pub fn extract_key_from_node(node: &RedNode) -> Option<String> {
         let token = node.first_token()?;
-        let text = token.text();
 
-        let quote_style = match token.kind() {
-            SyntaxKind::String => QuoteStyle::DoubleQuoted,
-            SyntaxKind::BlockString => QuoteStyle::Block,
-            SyntaxKind::UnquotedString => QuoteStyle::Unquoted,
+        match token.kind() {
             SyntaxKind::Integer
             | SyntaxKind::Float
             | SyntaxKind::True
             | SyntaxKind::False
-            | SyntaxKind::Null => return Some(text.to_string()),
+            | SyntaxKind::Null => Some(token.text().to_string()),
+            _ => decode_token(&token),
+        }
+    }
+
+    fn decode_token(token: &RedToken) -> Option<String> {
+        let text = token.text();
+
+        let quote_style = match token.kind() {
+            SyntaxKind::String => {
+                if text.starts_with('\'') {
+                    QuoteStyle::SingleQuoted
+                } else {
+                    QuoteStyle::DoubleQuoted
+                }
+            }
+            SyntaxKind::BlockString => QuoteStyle::Block,
+            SyntaxKind::UnquotedString => QuoteStyle::Unquoted,
             _ => return None,
         };
 
-        Some(quote_style.decode_body(text))
+        // 桁位置は複数行文字列の字下げ除去にだけ必要。引用符なしのキーで数えると
+        // 1 行の文書で走査が二次関数的になるため Block のときだけ求める。
+        let column = if quote_style == QuoteStyle::Block {
+            token_column(token)
+        } else {
+            0
+        };
+
+        Some(quote_style.decode_body(text, column))
     }
 }
 
@@ -261,6 +272,36 @@ mod tests {
         assert_eq!(
             flat.get("Mods.Example.Quoted Key").map(String::as_str),
             Some("value")
+        );
+    }
+
+    #[test]
+    fn flatten_decodes_single_quoted_values_and_keys() {
+        let loc = LocalizationFile::parse_with(
+            "Localization/en-US_Mods.Example.hjson",
+            r#"{ 'Chat': { Greeting: 'hello' } }"#,
+            KNOWN_CULTURES,
+        )
+        .unwrap();
+        let flat = loc.flatten().unwrap();
+        assert_eq!(
+            flat.get("Mods.Example.Chat.Greeting").map(String::as_str),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn flatten_dedents_block_strings() {
+        let loc = LocalizationFile::parse_with(
+            "Localization/en-US_Mods.Example.hjson",
+            "{\n  Description:\n    '''\n    line one\n    line two\n    '''\n}\n",
+            KNOWN_CULTURES,
+        )
+        .unwrap();
+        let flat = loc.flatten().unwrap();
+        assert_eq!(
+            flat.get("Mods.Example.Description").map(String::as_str),
+            Some("line one\nline two")
         );
     }
 }
