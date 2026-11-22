@@ -8,6 +8,11 @@
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    naersk = {
+      url = "github:nix-community/naersk";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.fenix.follows = "fenix";
+    };
   };
 
   outputs =
@@ -16,19 +21,21 @@
       nixpkgs,
       flake-utils,
       fenix,
+      naersk,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
         rustToolchain = fenix.packages.${system}.stable.toolchain;
-        naersk = pkgs.callPackage "${fenix}/pkgs/naersk.nix" {
+        naersk' = pkgs.callPackage "${naersk}/default.nix" {
           cargo = rustToolchain;
           rustc = rustToolchain;
+          clippy = rustToolchain;
         };
       in
       {
-        packages.default = naersk.buildPackage {
+        packages.default = naersk'.buildPackage {
           src = ./.;
         };
 
