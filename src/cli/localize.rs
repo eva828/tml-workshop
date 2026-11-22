@@ -89,7 +89,7 @@ fn is_localization_entry(name: &str) -> bool {
         .components()
         .any(|c| matches!(c, Component::Normal(s) if s == "Localization"));
     let extension = path.extension().and_then(|e| e.to_str());
-    has_localization_dir && matches!(extension, Some("hjson") | Some("json"))
+    has_localization_dir && extension == Some("hjson")
 }
 
 fn output_hjson(files: &[Localized]) -> Result<(), CliError> {
@@ -231,6 +231,14 @@ mod tests {
     fn value(doc: &HjsonDocument, dotted: &str) -> HjsonValue {
         doc.get(HjsonObjectPath::parse(dotted).unwrap())
             .expect("value")
+    }
+
+    #[test]
+    fn localization_entry_limits_to_hjson() {
+        let hjson = "Localization/en-US_Mods.Example.hjson";
+        let json = "Localization/en-US_Mods.Example.json";
+        assert!(is_localization_entry(hjson));
+        assert!(!is_localization_entry(json));
     }
 
     #[test]
