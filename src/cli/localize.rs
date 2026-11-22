@@ -1,8 +1,8 @@
-use std::path::{Component, Path};
+use std::path::Path;
 
 use hjson_edit::{Format, HjsonDocument, HjsonDocumentMerge, HjsonObjectPath};
 use tabled::{builder::Builder, settings::Style};
-use tml_workshop::{CdnCache, CulturePrefix, LocalizationFile, WorkshopClient};
+use tml_workshop::{CdnCache, CulturePrefix, FileEntry, LocalizationFile, WorkshopClient};
 
 use super::CliError;
 use super::args::{LocalizeArgs, OutputFormat};
@@ -35,25 +35,11 @@ pub async fn run(args: LocalizeArgs, cache: Option<CdnCache>) -> Result<(), CliE
     let mut tmod = client.reader_for(&entry)?;
     let header = tmod.parse_header().await?;
 
-    let mut entries: Vec<&tml_workshop::FileEntry> = header
-        .entries
-        .iter()
-        .filter(|e| is_localization_entry(&e.name))
-        .collect();
+    let mut entries = localization_entries(&header.entries, &args.culture);
     entries.sort_by(|a, b| a.name.cmp(&b.name));
 
     let mut files: Vec<Localized> = Vec::new();
     for entry in entries {
-        let prefix = CulturePrefix::parse_with(&entry.name, CLI_CULTURES).ok_or_else(|| {
-            CliError::msg(format!(
-                "failed to detect culture for localization '{}'",
-                entry.name
-            ))
-        })?;
-        if prefix.culture != args.culture {
-            continue;
-        }
-
         let raw = tmod.extract_file_as_text(entry).await?;
         let loc = LocalizationFile::parse_with(&entry.name, &raw, CLI_CULTURES).map_err(|e| {
             CliError::msg(format!(
@@ -83,13 +69,19 @@ pub async fn run(args: LocalizeArgs, cache: Option<CdnCache>) -> Result<(), CliE
     }
 }
 
-fn is_localization_entry(name: &str) -> bool {
-    let path = Path::new(name);
-    let has_localization_dir = path
-        .components()
-        .any(|c| matches!(c, Component::Normal(s) if s == "Localization"));
-    let extension = path.extension().and_then(|e| e.to_str());
-    has_localization_dir && extension == Some("hjson")
+fn is_hjson_entry(name: &str) -> bool {
+    Path::new(name).extension().and_then(|e| e.to_str()) == Some("hjson")
+}
+
+fn localization_entries<'a>(entries: &'a [FileEntry], culture: &str) -> Vec<&'a FileEntry> {
+    entries
+        .iter()
+        .filter(|e| is_hjson_entry(&e.name))
+        .filter(|e| {
+            CulturePrefix::parse_with(&e.name, CLI_CULTURES)
+                .is_some_and(|prefix| prefix.culture == culture)
+        })
+        .collect()
 }
 
 fn output_hjson(files: &[Localized]) -> Result<(), CliError> {
@@ -233,12 +225,67 @@ mod tests {
             .expect("value")
     }
 
+    fn entry(name: &str) -> FileEntry {
+        FileEntry {
+            name: name.to_string(),
+            uncompressed_size: 0,
+            compressed_size: 0,
+            offset: 0,
+        }
+    }
+
+    fn selected_names(entries: &[FileEntry], culture: &str) -> Vec<String> {
+        localization_entries(entries, culture)
+            .into_iter()
+            .map(|e| e.name.clone())
+            .collect()
+    }
+
     #[test]
-    fn localization_entry_limits_to_hjson() {
-        let hjson = "Localization/en-US_Mods.Example.hjson";
-        let json = "Localization/en-US_Mods.Example.json";
-        assert!(is_localization_entry(hjson));
-        assert!(!is_localization_entry(json));
+    fn selection_accepts_every_culture_layout() {
+        let entries = vec![
+            entry("Localization/en-US_Mods.Example.hjson"),
+            entry("Localization/en-US/Mods.Example.hjson"),
+            entry("en-US_Mods.Example.hjson"),
+            entry("en-US/Mods.Example.hjson"),
+            entry("Localisation/en-US_Mods.Example.hjson"),
+        ];
+        assert_eq!(
+            selected_names(&entries, "en-US"),
+            vec![
+                "Localization/en-US_Mods.Example.hjson",
+                "Localization/en-US/Mods.Example.hjson",
+                "en-US_Mods.Example.hjson",
+                "en-US/Mods.Example.hjson",
+                "Localisation/en-US_Mods.Example.hjson",
+            ]
+        );
+    }
+
+    #[test]
+    fn selection_skips_hjson_without_culture() {
+        let entries = vec![
+            entry("Mods.Example/Config.hjson"),
+            entry("some/random/data.hjson"),
+            entry("Localization/en-US.hjson"),
+        ];
+        assert_eq!(
+            selected_names(&entries, "en-US"),
+            vec!["Localization/en-US.hjson"]
+        );
+    }
+
+    #[test]
+    fn selection_skips_json_and_other_cultures() {
+        let entries = vec![
+            entry("Localization/en-US_Mods.Example.json"),
+            entry("Localization/ja-JP_Mods.Example.hjson"),
+            entry("Localization/en-US_Mods.Example.hjson"),
+        ];
+        assert_eq!(
+            selected_names(&entries, "en-US"),
+            vec!["Localization/en-US_Mods.Example.hjson"]
+        );
     }
 
     #[test]
